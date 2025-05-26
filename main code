@@ -32,6 +32,7 @@
         },
         load() {
             const id = Player?.MemberNumber;
+            if (!id) return;
             const roles = JSON.parse(localStorage.getItem(ROLE_KEY) || '{}');
             const pets = JSON.parse(localStorage.getItem(PET_KEY) || '{}');
             const myData = roles[id];
@@ -43,12 +44,14 @@
         },
         save() {
             const id = Player?.MemberNumber;
+            if (!id) return;
             const roles = JSON.parse(localStorage.getItem(ROLE_KEY) || '{}');
             roles[id] = { role: this.role, subRole: this.subRole };
             localStorage.setItem(ROLE_KEY, JSON.stringify(roles));
         },
         savePets() {
             const id = Player?.MemberNumber;
+            if (!id) return;
             const pets = JSON.parse(localStorage.getItem(PET_KEY) || '{}');
             pets[id] = this.pets;
             localStorage.setItem(PET_KEY, JSON.stringify(pets));
@@ -66,6 +69,7 @@
         },
         resetRole() {
             const id = Player?.MemberNumber;
+            if (!id) return;
             const roles = JSON.parse(localStorage.getItem(ROLE_KEY) || '{}');
             delete roles[id];
             localStorage.setItem(ROLE_KEY, JSON.stringify(roles));
@@ -83,7 +87,6 @@
             `;
             div.innerHTML = `
                 <div id="upa-role">Loading role...</div>
-                <div id="upa-pets"></div>
                 <button id="upa-reset" style="
                     margin-top: 8px;
                     background: #600;
@@ -93,10 +96,8 @@
                     border-radius: 6px;
                     font-size: 12px;
                     cursor: pointer;
-                    position: absolute;
-                    right: 8px;
-                    bottom: 8px;
                 ">Reset Role</button>
+                <div id="upa-pets" style="margin-top: 10px;"></div>
             `;
             document.body.appendChild(div);
             document.getElementById('upa-reset').addEventListener('click', () => {
@@ -135,7 +136,8 @@
                     const name = `#${requester}`;
                     if (confirm(`${name} wants to become your pet play owner. Accept?`)) {
                         const pets = JSON.parse(localStorage.getItem(PET_KEY) || '{}');
-                        const id = Player.MemberNumber;
+                        const id = Player?.MemberNumber;
+                        if (!id) return;
                         if (!pets[requester]) pets[requester] = [];
                         if (!pets[requester].includes(id)) pets[requester].push(id);
                         localStorage.setItem(PET_KEY, JSON.stringify(pets));
@@ -151,10 +153,7 @@
     const checkLogin = setInterval(() => {
         if (typeof Player !== "undefined" && Player.MemberNumber) {
             clearInterval(checkLogin);
-            UPA.init();
+            setTimeout(() => UPA.init(), 200);
         }
     }, 1000);
 })();
-
-})();
-
