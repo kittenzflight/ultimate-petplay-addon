@@ -1,0 +1,130 @@
+// ==UserScript==
+// @name         Ultimate Petplay Addon
+// @namespace    https://www.bondageprojects.com/
+// @version      1.0
+// @description  Adds advanced petplay features to Bondage Club via BCX and LSCG
+// @author       kittenzflight
+// @match        https://*.bondageprojects.elementfx.com/R*/*
+// @match        https://*.bondage-europe.com/R*/*
+// @match        https://*.bondageprojects.com/R*/*
+// @match        http://localhost:*/*
+// @updateURL    https://raw.githubusercontent.com/kittenzflight/ultimate-petplay-addon/main/ultimate-petplay-addon.user.js
+// @downloadURL  https://raw.githubusercontent.com/kittenzflight/ultimate-petplay-addon/main/ultimate-petplay-addon.user.js
+// @grant        none
+// ==/UserScript==
+
+(function () {
+    'use strict';
+
+    if (!window.BCX_Addons) window.BCX_Addons = {};
+    if (!window.LSCG_Command_Register) return;
+
+    window.BCX_Addons.Petplay = {
+        Name: "Petplay",
+        Version: "1.0",
+        Init() {},
+        Load() {},
+        Run() {},
+    };
+
+    function getPetData(memberNumber) {
+        return BCX_Storage.Get("Petplay_" + memberNumber) || {};
+    }
+
+    function setPetData(memberNumber, data) {
+        BCX_Storage.Set("Petplay_" + memberNumber, data);
+    }
+
+    // /hypno command (LSCG Hypnosis)
+    LSCG_Command_Register("hypno", (args) => {
+        const targetID = parseInt(args[0]);
+        if (isNaN(targetID)) return LSCG_Chat.SendLocal("Usage: /hypno [member number]");
+
+        const selfData = getPetData(Player.MemberNumber);
+        if (!selfData || (selfData.Role !== "Dom" && selfData.Role !== "Switch")) {
+            return LSCG_Chat.SendLocal("You must be a Dom or Switch to use this command.");
+        }
+
+        const target = ChatRoomCharacter.find(c => c.MemberNumber === targetID);
+        if (!target) return LSCG_Chat.SendLocal("Target not found in room.");
+
+        if (typeof LSCG_Hypnosis_Start !== "function") {
+            return LSCG_Chat.SendLocal("Hypnosis system not available.");
+        }
+
+        LSCG_Hypnosis_Start(target);
+        LSCG_Chat.SendLocal(`You hypnotize ${target.Name}.`);
+    });
+
+    // Petplay Rules UI Panel
+    BCX_UI.AddPanel({
+        ID: "PetplayRules",
+        Title: "Petplay: Rules",
+        Width: 600,
+        Height: 500,
+        Draw: function () {
+            const petData = getPetData(Player.MemberNumber);
+
+            DrawText("Active Pet Rules", this.X + 20, this.Y + 20, "White", "Gray");
+
+            DrawText("Crawl Rule:", this.X + 40, this.Y + 60, "White");
+            DrawButton(this.X + 200, this.Y + 55, 80, 30, petData.Rules?.crawl ? "ON" : "OFF", "Green", "White");
+
+            DrawText("Force Sound:", this.X + 40, this.Y + 100, "White");
+            DrawButton(this.X + 200, this.Y + 95, 80, 30, petData.Rules?.forceSound || "OFF", "Blue", "White");
+
+            const treatIcons = {
+                Puppy: "🦴", Kitty: "🐟", Bunny: "🥕", Fox: "🍓", Pony: "🥖"
+            };
+            const treatIcon = treatIcons[petData.SubRole] || "🦴";
+            DrawText(`Treats Collected: ${petData.Treats || 0} ${treatIcon}`, this.X + 40, this.Y + 160, "White");
+
+            DrawText("Tasks:", this.X + 40, this.Y + 200, "White");
+            if (petData.Tasks?.length) {
+                petData.Tasks.forEach((t, i) => {
+                    DrawText(`• ${t}`, this.X + 60, this.Y + 230 + i * 25, "LightGray");
+                });
+            } else {
+                DrawText("No tasks assigned.", this.X + 60, this.Y + 230, "Gray");
+            }
+        },
+        Click: function () {
+            const petData = getPetData(Player.MemberNumber);
+            petData.Rules = petData.Rules || {};
+
+            if (MouseIn(this.X + 200, this.Y + 55, 80, 30)) {
+                petData.Rules.crawl = !petData.Rules.crawl;
+                setPetData(Player.MemberNumber, petData);
+            }
+
+            if (MouseIn(this.X + 200, this.Y + 95, 80, 30)) {
+                const current = petData.Rules.forceSound;
+                petData.Rules.forceSound = current === "strict" ? "normal" : current === "normal" ? "off" : "strict";
+                setPetData(Player.MemberNumber, petData);
+            }
+        },
+    });
+
+    // Role indicator above characters
+    BCX_UI.AddDrawHook("PetplayIndicator", () => {
+        if (!ChatRoomCharacter || !Array.isArray(ChatRoomCharacter)) return;
+
+        for (const C of ChatRoomCharacter) {
+            const petData = getPetData(C.MemberNumber);
+            if (!petData || !petData.Role) continue;
+
+            const pos = BCX_Character.GetPosition(C);
+            if (!pos) continue;
+
+            const icons = {
+                Puppy: "🐕", Kitty: "🐈", Bunny: "🐇", Fox: "🦊", Pony: "🐴"
+            };
+            const icon = icons[petData.SubRole] || (petData.Role === "Dom" || petData.Role === "Switch" ? "⚑" : "");
+
+            if (icon) {
+                DrawText(icon, pos.X, pos.Y - 120, "White", "Black");
+            }
+        }
+    });
+
+})();
