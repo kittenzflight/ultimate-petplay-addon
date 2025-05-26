@@ -2,129 +2,187 @@
 // @name         Ultimate Petplay Addon
 // @namespace    https://www.bondageprojects.com/
 // @version      1.0
-// @description  Adds advanced petplay features to Bondage Club via BCX and LSCG
+// @description  Adds petplay roles, ownership, tasks, and HUD for Bondage Club
 // @author       kittenzflight
 // @match        https://*.bondageprojects.elementfx.com/R*/*
 // @match        https://*.bondage-europe.com/R*/*
 // @match        https://*.bondageprojects.com/R*/*
-// @match        http://localhost:*/*
-// @updateURL    https://raw.githubusercontent.com/kittenzflight/ultimate-petplay-addon/main/ultimate-petplay-addon.user.js
-// @downloadURL  https://raw.githubusercontent.com/kittenzflight/ultimate-petplay-addon/main/ultimate-petplay-addon.user.js
 // @grant        none
 // ==/UserScript==
 
 (function () {
     'use strict';
 
-    if (!window.BCX_Addons) window.BCX_Addons = {};
-    if (!window.LSCG_Command_Register) return;
-
-    window.BCX_Addons.Petplay = {
-        Name: "Petplay",
-        Version: "1.0",
-        Init() {},
-        Load() {},
-        Run() {},
+    // --- Constants ---
+    const ROLE_EMOJIS = {
+        'Mistress': '👠',
+        'Soft-dom': '☁️',
+        'Owner': '🔐',
+        'Trainer': '🚂',
+        'Puppy': '🐕',
+        'Kitty': '🐈',
+        'Bunny': '🐇',
+        'Fox': '🦊',
+        'Pony': '🐴',
     };
 
-    function getPetData(memberNumber) {
-        return BCX_Storage.Get("Petplay_" + memberNumber) || {};
+    let hudDiv, roleData = {}, petList = [];
+
+    // --- Load Stored Data ---
+    function loadRoleData() {
+        const saved = localStorage.getItem(`UPA_RoleData_${Player.MemberNumber}`);
+        if (saved) roleData = JSON.parse(saved);
     }
 
-    function setPetData(memberNumber, data) {
-        BCX_Storage.Set("Petplay_" + memberNumber, data);
+    function saveRoleData() {
+        localStorage.setItem(`UPA_RoleData_${Player.MemberNumber}`, JSON.stringify(roleData));
     }
 
-    // /hypno command (LSCG Hypnosis)
-    LSCG_Command_Register("hypno", (args) => {
-        const targetID = parseInt(args[0]);
-        if (isNaN(targetID)) return LSCG_Chat.SendLocal("Usage: /hypno [member number]");
+    // --- HUD Creation ---
+    function createHUD() {
+        if (document.getElementById("UPA-HUD")) return;
 
-        const selfData = getPetData(Player.MemberNumber);
-        if (!selfData || (selfData.Role !== "Dom" && selfData.Role !== "Switch")) {
-            return LSCG_Chat.SendLocal("You must be a Dom or Switch to use this command.");
+        hudDiv = document.createElement("div");
+        hudDiv.id = "UPA-HUD";
+        hudDiv.style.position = "fixed";
+        hudDiv.style.top = "50px";
+        hudDiv.style.left = "50px";
+        hudDiv.style.zIndex = 10000;
+        hudDiv.style.background = "rgba(20,20,20,0.9)";
+        hudDiv.style.color = "white";
+        hudDiv.style.padding = "10px";
+        hudDiv.style.borderRadius = "8px";
+        hudDiv.style.minWidth = "200px";
+        hudDiv.style.fontFamily = "Arial";
+
+        updateHUDContent();
+        document.body.appendChild(hudDiv);
+        makeDraggable(hudDiv);
+    }
+
+    // --- HUD Content ---
+    function updateHUDContent() {
+        hudDiv.innerHTML = '';
+
+        if (!roleData.role) {
+            const rolePrompt = document.createElement("div");
+            rolePrompt.innerHTML = `
+                <strong>Choose Role:</strong><br>
+                <button onclick="window.UPA_selectRole('Dom')">Dom</button>
+                <button onclick="window.UPA_selectRole('Pet')">Pet</button>
+                <button onclick="window.UPA_selectRole('Switch')">Switch</button>
+            `;
+            hudDiv.appendChild(rolePrompt);
+            return;
         }
 
-        const target = ChatRoomCharacter.find(c => c.MemberNumber === targetID);
-        if (!target) return LSCG_Chat.SendLocal("Target not found in room.");
+        const roleLabel = document.createElement("div");
+        roleLabel.innerHTML = `Role: <strong>${roleData.role}</strong>`;
+        hudDiv.appendChild(roleLabel);
 
-        if (typeof LSCG_Hypnosis_Start !== "function") {
-            return LSCG_Chat.SendLocal("Hypnosis system not available.");
+        const subRole = document.createElement("div");
+        subRole.innerHTML = `Sub-role: <strong>${roleData.subRole || 'None'} ${ROLE_EMOJIS[roleData.subRole] || ''}</strong>`;
+        hudDiv.appendChild(subRole);
+
+        if (roleData.role === 'Dom' || roleData.role === 'Switch') {
+            const petListLabel = document.createElement("div");
+            petListLabel.innerHTML = "<hr><strong>Leashed Pets:</strong><br>";
+            hudDiv.appendChild(petListLabel);
+
+            petList.forEach(pet => {
+                const petItem = document.createElement("div");
+                petItem.innerText = pet.Name;
+                petItem.style.cursor = "pointer";
+                petItem.onclick = () => alert(`Future Rule Dialog for ${pet.Name}`);
+                hudDiv.appendChild(petItem);
+            });
+        }
+    }
+
+    // --- Select Role ---
+    window.UPA_selectRole = function (role) {
+        if (!roleData.role) {
+            roleData.role = role;
+            if (role === 'Dom' || role === 'Switch') roleData.subRole = 'Mistress';
+            if (role === 'Pet') roleData.subRole = 'Kitty';
+            saveRoleData();
+            updateHUDContent();
+        }
+    };
+
+    // --- Ownership System ---
+    function handleAddPetCommand(command) {
+        const args = command.split(' ');
+        if (args[0] === '/addpet' && args[1]) {
+            const targetID = parseInt(args[1]);
+            const target = Player.See.find(p => p.MemberNumber === targetID);
+            if (!target) return;
+            ServerSend("ChatWhisper", {
+                Target: target.MemberNumber,
+                Content: `(UPA) ${Player.Name} wants to become your pet play owner. Type /acceptpet or /declinepet.`
+            });
         }
 
-        LSCG_Hypnosis_Start(target);
-        LSCG_Chat.SendLocal(`You hypnotize ${target.Name}.`);
-    });
-
-    // Petplay Rules UI Panel
-    BCX_UI.AddPanel({
-        ID: "PetplayRules",
-        Title: "Petplay: Rules",
-        Width: 600,
-        Height: 500,
-        Draw: function () {
-            const petData = getPetData(Player.MemberNumber);
-
-            DrawText("Active Pet Rules", this.X + 20, this.Y + 20, "White", "Gray");
-
-            DrawText("Crawl Rule:", this.X + 40, this.Y + 60, "White");
-            DrawButton(this.X + 200, this.Y + 55, 80, 30, petData.Rules?.crawl ? "ON" : "OFF", "Green", "White");
-
-            DrawText("Force Sound:", this.X + 40, this.Y + 100, "White");
-            DrawButton(this.X + 200, this.Y + 95, 80, 30, petData.Rules?.forceSound || "OFF", "Blue", "White");
-
-            const treatIcons = {
-                Puppy: "🦴", Kitty: "🐟", Bunny: "🥕", Fox: "🍓", Pony: "🥖"
-            };
-            const treatIcon = treatIcons[petData.SubRole] || "🦴";
-            DrawText(`Treats Collected: ${petData.Treats || 0} ${treatIcon}`, this.X + 40, this.Y + 160, "White");
-
-            DrawText("Tasks:", this.X + 40, this.Y + 200, "White");
-            if (petData.Tasks?.length) {
-                petData.Tasks.forEach((t, i) => {
-                    DrawText(`• ${t}`, this.X + 60, this.Y + 230 + i * 25, "LightGray");
-                });
-            } else {
-                DrawText("No tasks assigned.", this.X + 60, this.Y + 230, "Gray");
-            }
-        },
-        Click: function () {
-            const petData = getPetData(Player.MemberNumber);
-            petData.Rules = petData.Rules || {};
-
-            if (MouseIn(this.X + 200, this.Y + 55, 80, 30)) {
-                petData.Rules.crawl = !petData.Rules.crawl;
-                setPetData(Player.MemberNumber, petData);
-            }
-
-            if (MouseIn(this.X + 200, this.Y + 95, 80, 30)) {
-                const current = petData.Rules.forceSound;
-                petData.Rules.forceSound = current === "strict" ? "normal" : current === "normal" ? "off" : "strict";
-                setPetData(Player.MemberNumber, petData);
-            }
-        },
-    });
-
-    // Role indicator above characters
-    BCX_UI.AddDrawHook("PetplayIndicator", () => {
-        if (!ChatRoomCharacter || !Array.isArray(ChatRoomCharacter)) return;
-
-        for (const C of ChatRoomCharacter) {
-            const petData = getPetData(C.MemberNumber);
-            if (!petData || !petData.Role) continue;
-
-            const pos = BCX_Character.GetPosition(C);
-            if (!pos) continue;
-
-            const icons = {
-                Puppy: "🐕", Kitty: "🐈", Bunny: "🐇", Fox: "🦊", Pony: "🐴"
-            };
-            const icon = icons[petData.SubRole] || (petData.Role === "Dom" || petData.Role === "Switch" ? "⚑" : "");
-
-            if (icon) {
-                DrawText(icon, pos.X, pos.Y - 120, "White", "Black");
-            }
+        if (command === '/acceptpet') {
+            petList.push({ MemberNumber: ChatRoomTargetMemberNumber, Name: CharacterNickname(ChatRoomTarget) });
+            updateHUDContent();
         }
-    });
 
+        if (command === '/declinepet') {
+            ChatRoomMessage({ Content: "(UPA) You declined the ownership request." });
+        }
+    }
+
+    // --- Draggable HUD ---
+    function makeDraggable(element) {
+        let isDragging = false, offsetX, offsetY;
+
+        element.onmousedown = e => {
+            isDragging = true;
+            offsetX = e.clientX - element.offsetLeft;
+            offsetY = e.clientY - element.offsetTop;
+            document.onmousemove = dragMouseMove;
+            document.onmouseup = stopDragging;
+        };
+
+        function dragMouseMove(e) {
+            if (!isDragging) return;
+            element.style.left = e.clientX - offsetX + 'px';
+            element.style.top = e.clientY - offsetY + 'px';
+        }
+
+        function stopDragging() {
+            isDragging = false;
+            document.onmousemove = null;
+            document.onmouseup = null;
+        }
+    }
+
+    // --- Initialize ---
+    function initializeAddon() {
+        loadRoleData();
+        createHUD();
+        ChatRoomMessage({ Content: "(UPA) Ultimate Petplay Addon loaded.", Type: "LocalMessage", Sender: Player.MemberNumber });
+    }
+
+    // --- Monitor Chat for Commands ---
+    const originalChatSend = ChatRoomSendChat;
+    ChatRoomSendChat = function () {
+        const input = ElementValue("InputChat").trim();
+        if (input.startsWith('/addpet') || input === '/acceptpet' || input === '/declinepet') {
+            handleAddPetCommand(input);
+            ElementValue("InputChat", "");
+            return;
+        }
+        originalChatSend();
+    };
+
+    // Wait for login
+    const loginCheck = setInterval(() => {
+        if (typeof Player !== 'undefined' && Player.MemberNumber) {
+            clearInterval(loginCheck);
+            initializeAddon();
+        }
+    }, 1000);
 })();
+
