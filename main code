@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Ultimate Petplay Addon
 // @namespace    https://www.bondageprojects.com/
-// @version      1.2
-// @description  Adds petplay roles, pet lists, linking, and HUD for each account, with memory and emoji indicators.
+// @version      1.3.4
+// @description  Adds petplay roles, pet lists, linking, and HUD for each account, with memory and emoji indicators. Includes sound effects for actions like treat gain and addon load.
 // @author       kittenzflight
 // @match        https://*.bondageprojects.elementfx.com/R*/*
 // @match        https://*.bondage-europe.com/R*/*
@@ -15,6 +15,8 @@
 
     const ROLE_KEY = 'UPA_RoleData';
     const PET_KEY = 'UPA_PetLinks';
+    const RULE_KEY = 'UPA_Rules';
+    const TREAT_KEY = 'UPA_Treats';
 
     const DomSubRoles = { 'Mistress': '👠', 'Soft-dom': '☁️', 'Owner': '🔐', 'Trainer': '🚂' };
     const PetSubRoles = { 'Puppy': '🐕', 'Kitty': '🐈', 'Bunny': '🐇', 'Fox': '🦊', 'Pony': '🐴' };
@@ -23,24 +25,31 @@
         role: null,
         subRole: null,
         pets: [],
+        treats: 0,
         init() {
             this.load();
             this.createHUD();
             if (!this.role || !this.subRole) this.promptRole();
             else this.updateHUD();
             this.listenForCommands();
+            this.playSound('Bell');
+        },
+        playSound(name) {
+            if (typeof AudioPlaySound === "function") AudioPlaySound(name);
         },
         load() {
             const id = Player?.MemberNumber;
             if (!id) return;
             const roles = JSON.parse(localStorage.getItem(ROLE_KEY) || '{}');
             const pets = JSON.parse(localStorage.getItem(PET_KEY) || '{}');
+            const treats = JSON.parse(localStorage.getItem(TREAT_KEY) || '{}');
             const myData = roles[id];
             if (myData) {
                 this.role = myData.role;
                 this.subRole = myData.subRole;
             }
             this.pets = pets[id] || [];
+            this.treats = treats[id] || 0;
         },
         save() {
             const id = Player?.MemberNumber;
@@ -55,6 +64,37 @@
             const pets = JSON.parse(localStorage.getItem(PET_KEY) || '{}');
             pets[id] = this.pets;
             localStorage.setItem(PET_KEY, JSON.stringify(pets));
+        },
+        saveTreats() {
+            const id = Player?.MemberNumber;
+            if (!id) return;
+            const treats = JSON.parse(localStorage.getItem(TREAT_KEY) || '{}');
+            treats[id] = this.treats;
+            localStorage.setItem(TREAT_KEY, JSON.stringify(treats));
+        },
+        addTreat(count = 1) {
+            this.treats += count;
+            this.saveTreats();
+            this.updateHUD();
+            this.playSound('Heart');
+        },
+        getRulesForPet(petId) {
+            const rules = JSON.parse(localStorage.getItem(RULE_KEY) || '{}');
+            return rules[petId] || [];
+        },
+        setRulesForPet(petId, rules) {
+            const allRules = JSON.parse(localStorage.getItem(RULE_KEY) || '{}');
+            allRules[petId] = rules;
+            localStorage.setItem(RULE_KEY, JSON.stringify(allRules));
+            this.updateHUD();
+        },
+        promptAddRule(petId, petName) {
+            const current = this.getRulesForPet(petId);
+            const input = prompt(`Enter a new rule for ${petName} (#${petId}):`);
+            if (input && input.trim()) {
+                current.push(input.trim());
+                this.setRulesForPet(petId, current);
+            }
         },
         promptRole() {
             const role = prompt("Pick role: Pet, Dom, Switch");
@@ -87,6 +127,7 @@
             `;
             div.innerHTML = `
                 <div id="upa-role">Loading role...</div>
+                <div id="upa-treats" style="margin-top:5px;"></div>
                 <button id="upa-reset" style="
                     margin-top: 8px;
                     background: #600;
@@ -111,9 +152,25 @@
             const emoji = DomSubRoles[this.subRole] || PetSubRoles[this.subRole] || '';
             roleEl.innerHTML = `Role: ${this.role} ${emoji}<br>Sub: ${this.subRole}`;
 
+            const treatEl = document.getElementById('upa-treats');
+            treatEl.innerHTML = `Treats: 🍬 ${this.treats}`;
+
             const petsEl = document.getElementById('upa-pets');
             petsEl.innerHTML = `<b>Pets:</b><br>` + (this.pets.length === 0
-                ? `<i>None</i>` : this.pets.map(id => `<div>${id}</div>`).join(''));
+                ? `<i>None</i>`
+                : this.pets.map(pet => {
+                    const rules = this.getRulesForPet(pet.id);
+                    const ruleList = rules.length ? `<ul style='margin-left:10px;'>` + rules.map(r => `<li>${r}</li>`).join('') + `</ul>` : `<i style='margin-left:10px;'>No rules</i>`;
+                    return `<div><span class='upa-pet' data-id='${pet.id}' data-name='${pet.name}' style='cursor:pointer;'>${pet.name} (#${pet.id})</span>${ruleList}</div>`;
+                }).join(''));
+
+            document.querySelectorAll('.upa-pet').forEach(span => {
+                span.addEventListener('click', (e) => {
+                    const id = span.getAttribute('data-id');
+                    const name = span.getAttribute('data-name');
+                    this.promptAddRule(id, name);
+                });
+            });
         },
         listenForCommands() {
             const oldSend = ChatRoomSendChat;
@@ -139,7 +196,8 @@
                         const id = Player?.MemberNumber;
                         if (!id) return;
                         if (!pets[requester]) pets[requester] = [];
-                        if (!pets[requester].includes(id)) pets[requester].push(id);
+                        const petName = Player?.Name || 'Pet';
+                        if (!pets[requester].some(p => p.id === id)) pets[requester].push({ id, name: petName });
                         localStorage.setItem(PET_KEY, JSON.stringify(pets));
                         alert(`You are now owned by ${name}`);
                     }
